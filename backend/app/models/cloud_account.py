@@ -31,6 +31,14 @@ class CloudAccount(Base):
         String(255),
         nullable=False,
     )
+
+    external_id: Mapped[str | None] = mapped_column(
+        String(64),
+        unique=True,
+        nullable=True,
+        default=lambda: str(uuid.uuid4()),
+    )
+    
     status: Mapped[str] = mapped_column(
         String(20),
         nullable=False,
@@ -41,3 +49,5 @@ class CloudAccount(Base):
         server_default=func.now(),
         nullable=False,
     )
+
+    

@@ -43,7 +43,10 @@ def discover_aws_resources(
 
     try:
         provider = AWSProvider()
-        aws_session = provider.assume_role(account.role_arn)
+        aws_session = provider.assume_role(
+        account.role_arn,
+        account.external_id,
+)
 
         identity = aws_session.client("sts").get_caller_identity()
 

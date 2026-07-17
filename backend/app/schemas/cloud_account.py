@@ -17,6 +17,7 @@ class CloudAccountResponse(BaseModel):
     name: str
     provider: str
     aws_account_id: str
+    external_id: str | None
     role_arn: str
     status: str
     created_at: datetime
