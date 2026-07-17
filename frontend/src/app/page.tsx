@@ -2,6 +2,7 @@
 
 import { useEffect, useState } from "react";
 import AddCloudAccountForm from "@/components/AddCloudAccountForm";
+import CloudResourceTable from "@/components/CloudResourceTable";
 
 type CloudAccount = {
   id: string;
@@ -224,6 +225,9 @@ async function generateDemoInventory(account: CloudAccount) {
             </div>
           )}
         </div>
+
+        <CloudResourceTable resources={resources} />
+        
       </section>
     </main>
   );
