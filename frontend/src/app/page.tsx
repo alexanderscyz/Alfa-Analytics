@@ -3,6 +3,7 @@
 import { useEffect, useState } from "react";
 import AddCloudAccountForm from "@/components/AddCloudAccountForm";
 import CloudResourceTable from "@/components/CloudResourceTable";
+import FindingsPanel from "@/components/FindingsPanel";
 
 type CloudAccount = {
   id: string;
@@ -22,6 +23,19 @@ type CloudResource = {
   monthly_cost: string;
 };
 
+type Finding = {
+  id: string;
+  cloud_account_id: string;
+  cloud_resource_id: string;
+  category: string;
+  severity: string;
+  title: string;
+  description: string;
+  recommendation: string;
+  estimated_savings: string;
+  status: string;
+};
+
 const API_URL =
   process.env.NEXT_PUBLIC_API_URL ?? "http://localhost:8000";
 
@@ -30,6 +44,7 @@ export default function Home() {
   const [loading, setLoading] = useState(true);
   const [showForm, setShowForm] = useState(false);
   const [resources, setResources] = useState<CloudResource[]>([]);
+  const [findings, setFindings] = useState<Finding[]>([]);
 
   useEffect(() => {
     fetch(`${API_URL}/api/v1/cloud-accounts/`)
@@ -49,6 +64,13 @@ export default function Home() {
     .then((response) => response.json())
     .then(setResources);
 }, []);
+
+useEffect(() => {
+  fetch(`${API_URL}/api/v1/findings/`)
+    .then((response) => response.json())
+    .then(setFindings);
+}, []);
+
 
 async function deleteAccount(account: CloudAccount) {
   const confirmed = window.confirm(
@@ -106,6 +128,28 @@ async function generateDemoInventory(account: CloudAccount) {
   );
 }
 
+async function analyzeAccount(account: CloudAccount) {
+  const response = await fetch(
+    `${API_URL}/api/v1/findings/analyze/${account.id}`,
+    { method: "POST" },
+  );
+
+  if (!response.ok) {
+    const result = await response.json();
+    window.alert(result.detail ?? "No se pudo analizar la cuenta");
+    return;
+  }
+
+  const accountFindings: Finding[] = await response.json();
+
+  setFindings((currentFindings) => [
+    ...currentFindings.filter(
+      (finding) => finding.cloud_account_id !== account.id,
+    ),
+    ...accountFindings,
+  ]);
+}
+
   return (
     <main className="min-h-screen bg-slate-950 text-slate-100">
       <header className="border-b border-slate-800 bg-slate-900">
@@ -159,8 +203,8 @@ async function generateDemoInventory(account: CloudAccount) {
           />
           <MetricCard
             title="Hallazgos"
-            value="0"
-            detail="Sin análisis ejecutado"
+            value={findings.length.toString()}
+            detail="Riesgos y oportunidades detectadas"
           />
         </div>
 
@@ -213,6 +257,13 @@ async function generateDemoInventory(account: CloudAccount) {
             Cargar demo
           </button>
 
+          <button
+  onClick={() => analyzeAccount(account)}
+  className="rounded-lg border border-violet-500/30 px-3 py-1 text-sm text-violet-400 hover:bg-violet-500/10"
+>
+  Analizar
+</button>
+
   <button
     onClick={() => deleteAccount(account)}
     className="rounded-lg border border-red-500/30 px-3 py-1 text-sm text-red-400 hover:bg-red-500/10"
@@ -227,7 +278,8 @@ async function generateDemoInventory(account: CloudAccount) {
         </div>
 
         <CloudResourceTable resources={resources} />
-        
+        <FindingsPanel findings={findings} />
+
       </section>
     </main>
   );
