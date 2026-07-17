@@ -4,3 +4,4 @@ sqlalchemy
 psycopg[binary]
 alembic
 reportlab
+boto3

@@ -150,6 +150,54 @@ async function analyzeAccount(account: CloudAccount) {
   ]);
 }
 
+async function synchronizeAWS(account: CloudAccount) {
+  const confirmed = window.confirm(
+    `¿Deseas sincronizar recursos reales de "${account.name}"?`,
+  );
+
+  if (!confirmed) {
+    return;
+  }
+
+  const response = await fetch(
+    `${API_URL}/api/v1/aws/discover/${account.id}?region=us-east-1`,
+    { method: "POST" },
+  );
+
+  if (!response.ok) {
+    const result = await response.json();
+
+    window.alert(
+      result.detail ?? "No se pudo sincronizar la cuenta AWS",
+    );
+    return;
+  }
+
+  const discoveredResources: CloudResource[] =
+    await response.json();
+
+  setResources((currentResources) => [
+    ...currentResources.filter(
+      (resource) => resource.cloud_account_id !== account.id,
+    ),
+    ...discoveredResources,
+  ]);
+
+  setFindings((currentFindings) =>
+    currentFindings.filter(
+      (finding) => finding.cloud_account_id !== account.id,
+    ),
+  );
+
+  setAccounts((currentAccounts) =>
+    currentAccounts.map((currentAccount) =>
+      currentAccount.id === account.id
+        ? { ...currentAccount, status: "connected" }
+        : currentAccount,
+    ),
+  );
+}
+
   return (
     <main className="min-h-screen bg-slate-950 text-slate-100">
       <header className="border-b border-slate-800 bg-slate-900">
@@ -245,7 +293,7 @@ async function analyzeAccount(account: CloudAccount) {
                     </p>
                   </div>
 
-                  <div className="flex items-center gap-3">
+                  <div className="flex flex-wrap items-center justify-end gap-3">
   <span className="rounded-full bg-amber-500/15 px-3 py-1 text-sm text-amber-400">
     {account.status}
   </span>
@@ -256,6 +304,13 @@ async function analyzeAccount(account: CloudAccount) {
           >
             Cargar demo
           </button>
+
+          <button
+  onClick={() => synchronizeAWS(account)}
+  className="rounded-lg border border-blue-500/30 px-3 py-1 text-sm text-blue-400 hover:bg-blue-500/10"
+>
+  Sincronizar AWS
+</button>
 
           <button
   onClick={() => analyzeAccount(account)}
@@ -301,6 +356,9 @@ function MetricCard({
   value: string;
   detail: string;
 }) {
+
+
+  
   return (
     <article className="rounded-2xl border border-slate-800 bg-slate-900 p-6">
       <p className="text-sm text-slate-400">{title}</p>
