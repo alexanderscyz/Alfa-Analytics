@@ -11,6 +11,16 @@ type CloudAccount = {
   status: string;
 };
 
+type CloudResource = {
+  id: string;
+  cloud_account_id: string;
+  service: string;
+  name: string;
+  region: string;
+  status: string;
+  monthly_cost: string;
+};
+
 const API_URL =
   process.env.NEXT_PUBLIC_API_URL ?? "http://localhost:8000";
 
@@ -18,6 +28,7 @@ export default function Home() {
   const [accounts, setAccounts] = useState<CloudAccount[]>([]);
   const [loading, setLoading] = useState(true);
   const [showForm, setShowForm] = useState(false);
+  const [resources, setResources] = useState<CloudResource[]>([]);
 
   useEffect(() => {
     fetch(`${API_URL}/api/v1/cloud-accounts/`)
@@ -32,6 +43,11 @@ export default function Home() {
       .finally(() => setLoading(false));
   }, []);
 
+  useEffect(() => {
+  fetch(`${API_URL}/api/v1/cloud-resources/`)
+    .then((response) => response.json())
+    .then(setResources);
+}, []);
 
 async function deleteAccount(account: CloudAccount) {
   const confirmed = window.confirm(
@@ -55,6 +71,36 @@ async function deleteAccount(account: CloudAccount) {
   setAccounts((currentAccounts) =>
     currentAccounts.filter(
       (currentAccount) => currentAccount.id !== account.id,
+    ),
+  );
+}
+
+
+async function generateDemoInventory(account: CloudAccount) {
+  const response = await fetch(
+    `${API_URL}/api/v1/cloud-resources/demo/${account.id}`,
+    { method: "POST" },
+  );
+
+  if (!response.ok) {
+    window.alert("No se pudo generar el inventario demo");
+    return;
+  }
+
+  const demoResources: CloudResource[] = await response.json();
+
+  setResources((currentResources) => [
+    ...currentResources.filter(
+      (resource) => resource.cloud_account_id !== account.id,
+    ),
+    ...demoResources,
+  ]);
+
+  setAccounts((currentAccounts) =>
+    currentAccounts.map((currentAccount) =>
+      currentAccount.id === account.id
+        ? { ...currentAccount, status: "demo" }
+        : currentAccount,
     ),
   );
 }
@@ -107,7 +153,7 @@ async function deleteAccount(account: CloudAccount) {
           />
           <MetricCard
             title="Recursos"
-            value="0"
+            value={resources.length.toString()}
             detail="Pendiente de inventario"
           />
           <MetricCard
@@ -158,6 +204,13 @@ async function deleteAccount(account: CloudAccount) {
   <span className="rounded-full bg-amber-500/15 px-3 py-1 text-sm text-amber-400">
     {account.status}
   </span>
+
+          <button
+            onClick={() => generateDemoInventory(account)}
+            className="rounded-lg border border-cyan-500/30 px-3 py-1 text-sm text-cyan-400 hover:bg-cyan-500/10"
+          >
+            Cargar demo
+          </button>
 
   <button
     onClick={() => deleteAccount(account)}

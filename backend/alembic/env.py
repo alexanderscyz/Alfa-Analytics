@@ -6,6 +6,7 @@ from sqlalchemy import engine_from_config, pool
 
 from app.models.base import Base
 from app.models.cloud_account import CloudAccount  # noqa: F401
+from app.models.cloud_resource import CloudResource  # noqa: F401
 
 config = context.config
 
