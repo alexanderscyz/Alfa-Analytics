@@ -1,6 +1,7 @@
 from fastapi import FastAPI
 from sqlalchemy import text
 from app.database import engine
+from app.api.routes.cloud_accounts import router as cloud_accounts_router
 
 app = FastAPI(
     title="Alfa Analytics API",
@@ -24,3 +25,5 @@ def database_health():
         connection.execute(text("SELECT 1"))
 
     return {"database": "healthy"}
+
+app.include_router(cloud_accounts_router, prefix="/api/v1")
