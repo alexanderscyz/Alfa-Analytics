@@ -1,3 +1,4 @@
+import uuid
 from typing import Annotated
 
 from fastapi import APIRouter, Depends, HTTPException, status
@@ -8,6 +9,8 @@ from sqlalchemy.orm import Session
 from app.database import get_database_session
 from app.models.cloud_account import CloudAccount
 from app.schemas.cloud_account import CloudAccountCreate, CloudAccountResponse
+
+
 
 router = APIRouter(prefix="/cloud-accounts", tags=["Cloud Accounts"])
 
@@ -43,3 +46,22 @@ def create_cloud_account(
         )
 
     return account
+
+@router.delete(
+    "/{account_id}",
+    status_code=status.HTTP_204_NO_CONTENT,
+)
+def delete_cloud_account(
+    account_id: uuid.UUID,
+    database: DatabaseSession,
+):
+    account = database.get(CloudAccount, account_id)
+
+    if account is None:
+        raise HTTPException(
+            status_code=status.HTTP_404_NOT_FOUND,
+            detail="Cloud account not found",
+        )
+
+    database.delete(account)
+    database.commit()

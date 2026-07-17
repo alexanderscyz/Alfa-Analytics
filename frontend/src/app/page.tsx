@@ -1,6 +1,7 @@
 "use client";
 
 import { useEffect, useState } from "react";
+import AddCloudAccountForm from "@/components/AddCloudAccountForm";
 
 type CloudAccount = {
   id: string;
@@ -16,6 +17,7 @@ const API_URL =
 export default function Home() {
   const [accounts, setAccounts] = useState<CloudAccount[]>([]);
   const [loading, setLoading] = useState(true);
+  const [showForm, setShowForm] = useState(false);
 
   useEffect(() => {
     fetch(`${API_URL}/api/v1/cloud-accounts/`)
@@ -29,6 +31,33 @@ export default function Home() {
       .then(setAccounts)
       .finally(() => setLoading(false));
   }, []);
+
+
+async function deleteAccount(account: CloudAccount) {
+  const confirmed = window.confirm(
+    `¿Deseas eliminar la cuenta "${account.name}"?`,
+  );
+
+  if (!confirmed) {
+    return;
+  }
+
+  const response = await fetch(
+    `${API_URL}/api/v1/cloud-accounts/${account.id}`,
+    { method: "DELETE" },
+  );
+
+  if (!response.ok) {
+    window.alert("No se pudo eliminar la cuenta");
+    return;
+  }
+
+  setAccounts((currentAccounts) =>
+    currentAccounts.filter(
+      (currentAccount) => currentAccount.id !== account.id,
+    ),
+  );
+}
 
   return (
     <main className="min-h-screen bg-slate-950 text-slate-100">
@@ -57,6 +86,19 @@ export default function Home() {
           </p>
         </div>
 
+        {showForm && (
+  <AddCloudAccountForm
+    onCancel={() => setShowForm(false)}
+    onCreated={(account) => {
+      setAccounts((currentAccounts) => [
+        account,
+        ...currentAccounts,
+      ]);
+      setShowForm(false);
+    }}
+  />
+)}
+
         <div className="grid gap-5 md:grid-cols-3">
           <MetricCard
             title="Cuentas cloud"
@@ -84,9 +126,12 @@ export default function Home() {
               </p>
             </div>
 
-            <button className="rounded-lg bg-cyan-500 px-4 py-2 font-medium text-slate-950">
-              Agregar cuenta
-            </button>
+            <button
+  onClick={() => setShowForm(true)}
+  className="rounded-lg bg-cyan-500 px-4 py-2 font-medium text-slate-950"
+>
+  Agregar cuenta
+</button> 
           </div>
 
           {loading ? (
@@ -109,9 +154,18 @@ export default function Home() {
                     </p>
                   </div>
 
-                  <span className="rounded-full bg-amber-500/15 px-3 py-1 text-sm text-amber-400">
-                    {account.status}
-                  </span>
+                  <div className="flex items-center gap-3">
+  <span className="rounded-full bg-amber-500/15 px-3 py-1 text-sm text-amber-400">
+    {account.status}
+  </span>
+
+  <button
+    onClick={() => deleteAccount(account)}
+    className="rounded-lg border border-red-500/30 px-3 py-1 text-sm text-red-400 hover:bg-red-500/10"
+  >
+    Eliminar
+  </button>
+</div>
                 </div>
               ))}
             </div>
