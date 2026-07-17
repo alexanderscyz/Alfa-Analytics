@@ -2,11 +2,22 @@ from fastapi import FastAPI
 from sqlalchemy import text
 from app.database import engine
 from app.api.routes.cloud_accounts import router as cloud_accounts_router
+from fastapi.middleware.cors import CORSMiddleware
 
 app = FastAPI(
     title="Alfa Analytics API",
     version="0.1.0"
 )
+
+app.add_middleware(
+    CORSMiddleware,
+    allow_origins=["http://localhost:3000"],
+    allow_credentials=True,
+    allow_methods=["*"],
+    allow_headers=["*"],
+)
+
+app.include_router(cloud_accounts_router, prefix="/api/v1")
 
 @app.get("/")
 def root():
@@ -26,4 +37,5 @@ def database_health():
 
     return {"database": "healthy"}
 
-app.include_router(cloud_accounts_router, prefix="/api/v1")
+
+
