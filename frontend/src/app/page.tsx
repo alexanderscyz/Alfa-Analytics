@@ -264,6 +264,13 @@ async function analyzeAccount(account: CloudAccount) {
   Analizar
 </button>
 
+<a
+  href={`${API_URL}/api/v1/reports/${account.id}/executive`}
+  className="rounded-lg border border-emerald-500/30 px-3 py-1 text-sm text-emerald-400 hover:bg-emerald-500/10"
+>
+  Descargar reporte
+</a>
+
   <button
     onClick={() => deleteAccount(account)}
     className="rounded-lg border border-red-500/30 px-3 py-1 text-sm text-red-400 hover:bg-red-500/10"
