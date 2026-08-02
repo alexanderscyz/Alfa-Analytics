@@ -327,8 +327,10 @@ export default function Home() {
         {showForm && (
           <AddCloudAccountForm
             onCancel={() => setShowForm(false)}
-            onCreated={() => {
+            onCreated={(account) => {
               setShowForm(false);
+              setSelectedAccountId(account.id);
+              setSetupAccount(account);
               void loadAccounts();
             }}
           />
