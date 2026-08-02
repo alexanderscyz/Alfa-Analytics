@@ -51,6 +51,24 @@ export default function Home() {
   const [showForm, setShowForm] = useState(false);
   const [setupAccount, setSetupAccount] =
     useState<CloudAccount | null>(null);
+  const [selectedAccountId, setSelectedAccountId] =
+    useState<string | null>(null);
+
+  const selectedAccount =
+    accounts.find((account) => account.id === selectedAccountId) ??
+    null;
+  const selectedResources = selectedAccountId
+    ? resources.filter(
+        (resource) =>
+          resource.cloud_account_id === selectedAccountId,
+      )
+    : [];
+  const selectedFindings = selectedAccountId
+    ? findings.filter(
+        (finding) =>
+          finding.cloud_account_id === selectedAccountId,
+      )
+    : [];
 
   const loadAccounts = useCallback(async () => {
     try {
@@ -64,6 +82,15 @@ export default function Home() {
 
       const result: CloudAccount[] = await response.json();
       setAccounts(result);
+      setSelectedAccountId((currentAccountId) => {
+        const currentAccountStillExists = result.some(
+          (account) => account.id === currentAccountId,
+        );
+
+        return currentAccountStillExists
+          ? currentAccountId
+          : (result[0]?.id ?? null);
+      });
     } finally {
       setLoading(false);
     }
@@ -140,12 +167,21 @@ export default function Home() {
       ),
     );
 
+    if (selectedAccountId === account.id) {
+      const nextAccount = accounts.find(
+        (currentAccount) => currentAccount.id !== account.id,
+      );
+      setSelectedAccountId(nextAccount?.id ?? null);
+    }
+
     if (setupAccount?.id === account.id) {
       setSetupAccount(null);
     }
   }
 
   async function generateDemoInventory(account: CloudAccount) {
+    setSelectedAccountId(account.id);
+
     const response = await fetch(
       `${API_URL}/api/v1/cloud-resources/demo/${account.id}`,
       { method: "POST" },
@@ -189,6 +225,8 @@ export default function Home() {
       return;
     }
 
+    setSelectedAccountId(account.id);
+
     const response = await fetch(
       `${API_URL}/api/v1/aws/discover/${account.id}?region=us-east-1`,
       { method: "POST" },
@@ -229,6 +267,8 @@ export default function Home() {
   }
 
   async function analyzeAccount(account: CloudAccount) {
+    setSelectedAccountId(account.id);
+
     const response = await fetch(
       `${API_URL}/api/v1/findings/analyze/${account.id}`,
       { method: "POST" },
@@ -310,14 +350,22 @@ export default function Home() {
 
           <MetricCard
             title="Recursos"
-            value={resources.length.toString()}
-            detail="Recursos inventariados"
+            value={selectedResources.length.toString()}
+            detail={
+              selectedAccount
+                ? `Inventario de ${selectedAccount.name}`
+                : "Selecciona una cuenta"
+            }
           />
 
           <MetricCard
             title="Hallazgos"
-            value={findings.length.toString()}
-            detail="Riesgos y oportunidades detectadas"
+            value={selectedFindings.length.toString()}
+            detail={
+              selectedAccount
+                ? `Análisis de ${selectedAccount.name}`
+                : "Selecciona una cuenta"
+            }
           />
         </div>
 
@@ -354,7 +402,11 @@ export default function Home() {
               {accounts.map((account) => (
                 <div
                   key={account.id}
-                  className="flex flex-col gap-4 border-b border-slate-800 p-5 last:border-b-0 lg:flex-row lg:items-center lg:justify-between"
+                  className={`flex flex-col gap-4 border-b border-slate-800 p-5 last:border-b-0 lg:flex-row lg:items-center lg:justify-between ${
+                    selectedAccountId === account.id
+                      ? "bg-cyan-500/5"
+                      : ""
+                  }`}
                 >
                   <div>
                     <p className="font-medium">{account.name}</p>
@@ -365,6 +417,19 @@ export default function Home() {
                   </div>
 
                   <div className="flex flex-wrap items-center justify-end gap-3">
+                    <button
+                      onClick={() => setSelectedAccountId(account.id)}
+                      className={`rounded-lg border px-3 py-1 text-sm ${
+                        selectedAccountId === account.id
+                          ? "border-cyan-400 bg-cyan-500/15 text-cyan-300"
+                          : "border-slate-500/30 text-slate-300 hover:bg-slate-500/10"
+                      }`}
+                    >
+                      {selectedAccountId === account.id
+                        ? "Seleccionada"
+                        : "Ver datos"}
+                    </button>
+
                     <span className="rounded-full bg-amber-500/15 px-3 py-1 text-sm text-amber-400">
                       {account.status}
                     </span>
@@ -419,10 +484,62 @@ export default function Home() {
           )}
         </div>
 
-        <CloudResourceTable resources={resources} />
-        <FindingsPanel findings={findings} />
+        {selectedAccount ? (
+          <>
+            <div className="mt-8 rounded-xl border border-cyan-500/20 bg-cyan-500/5 px-5 py-4">
+              <p className="text-sm text-slate-400">
+                Vista actual
+              </p>
+              <p className="mt-1 font-semibold text-cyan-300">
+                {selectedAccount.name}
+              </p>
+            </div>
+
+            {selectedResources.length > 0 ? (
+              <CloudResourceTable resources={selectedResources} />
+            ) : (
+              <EmptyState
+                title="Inventario cloud"
+                message={`No se descubrieron recursos para ${selectedAccount.name}.`}
+              />
+            )}
+
+            {selectedFindings.length > 0 ? (
+              <FindingsPanel findings={selectedFindings} />
+            ) : (
+              <EmptyState
+                title="Hallazgos y recomendaciones"
+                message={
+                  selectedResources.length > 0
+                    ? "No se detectaron riesgos u oportunidades para esta cuenta."
+                    : "Sin recursos inventariados no hay elementos para analizar."
+                }
+              />
+            )}
+          </>
+        ) : (
+          <EmptyState
+            title="Inventario cloud"
+            message="Selecciona una cuenta para consultar sus datos."
+          />
+        )}
       </section>
     </main>
+  );
+}
+
+function EmptyState({
+  title,
+  message,
+}: {
+  title: string;
+  message: string;
+}) {
+  return (
+    <section className="mt-8 rounded-2xl border border-slate-800 bg-slate-900 p-6">
+      <h3 className="text-xl font-semibold">{title}</h3>
+      <p className="mt-2 text-sm text-slate-400">{message}</p>
+    </section>
   );
 }
 
