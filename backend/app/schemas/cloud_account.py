@@ -1,7 +1,12 @@
 import uuid
 from datetime import datetime
 
-from pydantic import BaseModel, ConfigDict, Field, field_validator
+from pydantic import (
+    BaseModel,
+    ConfigDict,
+    Field,
+    field_validator,
+)
 
 
 class CloudAccountCreate(BaseModel):
@@ -11,16 +16,10 @@ class CloudAccountCreate(BaseModel):
         max_length=12,
         pattern=r"^\d{12}$",
     )
-    role_arn: str = Field(
-        min_length=20,
-        max_length=255,
-        pattern=r"^arn:aws:iam::\d{12}:role/[\w+=,.@/_-]+$",
-    )
 
     @field_validator(
         "name",
         "aws_account_id",
-        "role_arn",
         mode="before",
     )
     @classmethod

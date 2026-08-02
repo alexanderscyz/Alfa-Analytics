@@ -54,7 +54,16 @@ def create_cloud_account(
     account_data: CloudAccountCreate,
     database: DatabaseSession,
 ):
-    account = CloudAccount(**account_data.model_dump())
+
+    role_arn = (
+        f"arn:aws:iam::{account_data.aws_account_id}:"
+        "role/AlfaAnalyticsReadOnlyRole"
+    )
+
+    account = CloudAccount(
+        **account_data.model_dump(),
+        role_arn=role_arn,
+    )
 
     try:
         database.add(account)

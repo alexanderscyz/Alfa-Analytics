@@ -7,6 +7,8 @@ type CloudAccount = {
   name: string;
   provider: string;
   aws_account_id: string;
+  role_arn: string;
+  external_id: string | null;
   status: string;
 };
 
@@ -24,7 +26,6 @@ export default function AddCloudAccountForm({
 }: Props) {
   const [name, setName] = useState("");
   const [accountId, setAccountId] = useState("");
-  const [roleArn, setRoleArn] = useState("");
   const [error, setError] = useState("");
   const [saving, setSaving] = useState(false);
 
@@ -33,27 +34,40 @@ export default function AddCloudAccountForm({
     setSaving(true);
     setError("");
 
-    const response = await fetch(
-      `${API_URL}/api/v1/cloud-accounts/`,
-      {
-        method: "POST",
-        headers: { "Content-Type": "application/json" },
-        body: JSON.stringify({
-          name,
-          aws_account_id: accountId,
-          role_arn: roleArn,
-        }),
-      },
-    );
+    try {
+      const response = await fetch(
+        `${API_URL}/api/v1/cloud-accounts/`,
+        {
+          method: "POST",
+          headers: {
+            "Content-Type": "application/json",
+          },
+          body: JSON.stringify({
+            name,
+            aws_account_id: accountId,
+          }),
+        },
+      );
 
-    if (!response.ok) {
-      const result = await response.json();
-      setError(result.detail ?? "No se pudo registrar la cuenta");
+      if (!response.ok) {
+        const result = await response.json();
+
+        setError(
+          typeof result.detail === "string"
+            ? result.detail
+            : "No se pudo registrar la cuenta",
+        );
+        return;
+      }
+
+      onCreated(await response.json());
+    } catch {
+      setError(
+        "No se pudo establecer conexión con Alfa Analytics",
+      );
+    } finally {
       setSaving(false);
-      return;
     }
-
-    onCreated(await response.json());
   }
 
   return (
@@ -61,9 +75,16 @@ export default function AddCloudAccountForm({
       onSubmit={handleSubmit}
       className="mb-8 rounded-2xl border border-slate-800 bg-slate-900 p-6"
     >
-      <h3 className="text-xl font-semibold">Agregar cuenta AWS</h3>
+      <h3 className="text-xl font-semibold">
+        Agregar cuenta AWS
+      </h3>
 
-      <div className="mt-5 grid gap-4 md:grid-cols-3">
+      <p className="mt-1 text-sm text-slate-400">
+        Alfa Analytics generará automáticamente el ARN del rol y el
+        External ID.
+      </p>
+
+      <div className="mt-5 grid gap-4 md:grid-cols-2">
         <input
           required
           value={name}
@@ -76,22 +97,24 @@ export default function AddCloudAccountForm({
           required
           minLength={12}
           maxLength={12}
+          inputMode="numeric"
+          pattern="[0-9]{12}"
           value={accountId}
-          onChange={(event) => setAccountId(event.target.value)}
-          placeholder="AWS Account ID"
-          className="rounded-lg border border-slate-700 bg-slate-950 px-4 py-3 outline-none focus:border-cyan-500"
-        />
-
-        <input
-          required
-          value={roleArn}
-          onChange={(event) => setRoleArn(event.target.value)}
-          placeholder="IAM Role ARN"
+          onChange={(event) =>
+            setAccountId(
+              event.target.value.replace(/\D/g, ""),
+            )
+          }
+          placeholder="AWS Account ID de 12 dígitos"
           className="rounded-lg border border-slate-700 bg-slate-950 px-4 py-3 outline-none focus:border-cyan-500"
         />
       </div>
 
-      {error && <p className="mt-4 text-sm text-red-400">{error}</p>}
+      {error && (
+        <p className="mt-4 text-sm text-red-400">
+          {error}
+        </p>
+      )}
 
       <div className="mt-5 flex justify-end gap-3">
         <button
