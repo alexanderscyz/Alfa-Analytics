@@ -19,6 +19,7 @@ services:
       AWS_PROFILE: ${AWS_PROFILE:-default}
       AWS_DEFAULT_REGION: ${AWS_DEFAULT_REGION:-us-east-1}
       AWS_SDK_LOAD_CONFIG: "1"
+      ALFA_AWS_PRINCIPAL_ARN: ${ALFA_AWS_PRINCIPAL_ARN:-}
     
   frontend:
     build:
