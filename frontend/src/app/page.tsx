@@ -441,14 +441,6 @@ export default function Home() {
                       Configurar AWS
                     </button>
 
-                     <a
-                      href={`${API_URL}/api/v1/cloud-accounts/${account.id}/cloudformation`}
-                      download
-                      className="rounded-lg border border-orange-500/30 px-3 py-1 text-sm text-orange-400 hover:bg-orange-500/10"
-                    >
-                      Descargar plantilla
-                    </a>
-
                     <button
                       onClick={() =>
                         generateDemoInventory(account)
