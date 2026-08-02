@@ -1,15 +1,10 @@
 "use client";
 
+import type { CloudAccount } from "@/types/cloud";
+
 const API_URL =
   process.env.NEXT_PUBLIC_API_URL ?? "http://localhost:8000";
 
-type CloudAccount = {
-  id: string;
-  name: string;
-  aws_account_id: string;
-  role_arn: string;
-  external_id: string | null;
-};
 
 type Props = {
   account: CloudAccount;
