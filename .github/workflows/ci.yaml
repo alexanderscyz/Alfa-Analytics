@@ -37,6 +37,8 @@ jobs:
         run: pip install -r requirements-dev.txt
 
       - name: Run tests
+        env:
+          DATABASE_URL: postgresql+psycopg://test:test@localhost:5432/test
         run: pytest -v
 
   frontend:
