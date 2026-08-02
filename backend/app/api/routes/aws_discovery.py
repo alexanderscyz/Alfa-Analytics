@@ -1,8 +1,15 @@
 import uuid
+from datetime import datetime, timezone
 from typing import Annotated
 
 from botocore.exceptions import BotoCoreError, ClientError
-from fastapi import APIRouter, Depends, HTTPException, Query, status
+from fastapi import (
+    APIRouter,
+    Depends,
+    HTTPException,
+    Query,
+    status,
+)
 from sqlalchemy import delete
 from sqlalchemy.orm import Session
 
@@ -11,12 +18,19 @@ from app.models.cloud_account import CloudAccount
 from app.models.cloud_resource import CloudResource
 from app.models.finding import Finding
 from app.providers.aws_inventory import AWSInventoryCollector
-from app.providers.aws_provider import AWSConnectionError, AWSProvider
+from app.providers.aws_provider import (
+    AWSConnectionError,
+    AWSProvider,
+)
 from app.schemas.cloud_resource import CloudResourceResponse
+
 
 router = APIRouter(prefix="/aws", tags=["AWS Discovery"])
 
-DatabaseSession = Annotated[Session, Depends(get_database_session)]
+DatabaseSession = Annotated[
+    Session,
+    Depends(get_database_session),
+]
 
 
 @router.post(
@@ -41,20 +55,30 @@ def discover_aws_resources(
             detail="Cloud account not found",
         )
 
+    account.last_sync_at = datetime.now(timezone.utc)
+    account.last_sync_region = region
+
     try:
         provider = AWSProvider()
         aws_session = provider.assume_role(
-        account.role_arn,
-        account.external_id,
-)
+            account.role_arn,
+            account.external_id,
+        )
 
-        identity = aws_session.client("sts").get_caller_identity()
+        identity = aws_session.client(
+            "sts",
+        ).get_caller_identity()
 
         if identity["Account"] != account.aws_account_id:
+            account.status = "connection_failed"
+            account.last_sync_status = "failed"
+            database.commit()
+
             raise HTTPException(
                 status_code=status.HTTP_409_CONFLICT,
                 detail=(
-                    "The assumed role belongs to a different AWS account"
+                    "The assumed role belongs to a different "
+                    "AWS account"
                 ),
             )
 
@@ -66,6 +90,7 @@ def discover_aws_resources(
 
     except AWSConnectionError as error:
         account.status = "connection_failed"
+        account.last_sync_status = "failed"
         database.commit()
 
         raise HTTPException(
@@ -77,6 +102,7 @@ def discover_aws_resources(
 
     except (ClientError, BotoCoreError) as error:
         account.status = "discovery_failed"
+        account.last_sync_status = "failed"
         database.commit()
 
         raise HTTPException(
@@ -91,7 +117,6 @@ def discover_aws_resources(
             Finding.cloud_account_id == account_id,
         ),
     )
-
     database.execute(
         delete(CloudResource).where(
             CloudResource.cloud_account_id == account_id,
@@ -113,7 +138,11 @@ def discover_aws_resources(
     ]
 
     database.add_all(resources)
+
     account.status = "connected"
+    account.last_sync_status = "success"
+    account.resource_count = len(resources)
+
     database.commit()
 
     return resources

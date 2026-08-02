@@ -15,6 +15,10 @@ type CloudAccount = {
   role_arn: string;
   external_id: string | null;
   status: string;
+  last_sync_at: string | null;
+  last_sync_region: string | null;
+  last_sync_status: string | null;
+  resource_count: number;
 };
 
 type CloudResource = {
@@ -416,6 +420,29 @@ export default function Home() {
                     <p className="mt-1 text-sm text-slate-400">
                       AWS · {account.aws_account_id}
                     </p>
+
+                    {account.last_sync_at && (
+                      <div className="mt-2 space-y-1 text-xs text-slate-500">
+                        <p>
+                          Última sincronización:{" "}
+                          {new Date(
+                            account.last_sync_at,
+                          ).toLocaleString("es-PE", {
+                            dateStyle: "short",
+                            timeStyle: "short",
+                          })}
+                        </p>
+
+                        <p>
+                          Región:{" "}
+                          {account.last_sync_region ?? "No disponible"}
+                          {" · "}
+                          {account.resource_count} recursos
+                          {" · "}
+                          {account.last_sync_status}
+                        </p>
+                      </div>
+                    )}
                   </div>
 
                   <div className="flex flex-wrap items-center justify-end gap-3">
@@ -436,28 +463,34 @@ export default function Home() {
                       {account.status}
                     </span>
 
-                    <button
-                      onClick={() => setSetupAccount(account)}
-                      className="rounded-lg border border-slate-500/30 px-3 py-1 text-sm text-slate-300 hover:bg-slate-500/10"
-                    >
-                      Configurar AWS
-                    </button>
+                    {account.status !== "demo" && (
+                      <button
+                        onClick={() => setSetupAccount(account)}
+                        className="rounded-lg border border-slate-500/30 px-3 py-1 text-sm text-slate-300 hover:bg-slate-500/10"
+                      >
+                        Configurar AWS
+                      </button>
+                    )}
 
-                    <button
-                      onClick={() =>
-                        generateDemoInventory(account)
-                      }
-                      className="rounded-lg border border-cyan-500/30 px-3 py-1 text-sm text-cyan-400 hover:bg-cyan-500/10"
-                    >
-                      Cargar demo
-                    </button>
+                    {account.status === "demo" && (
+                      <button
+                        onClick={() =>
+                          generateDemoInventory(account)
+                        }
+                        className="rounded-lg border border-cyan-500/30 px-3 py-1 text-sm text-cyan-400 hover:bg-cyan-500/10"
+                      >
+                        Cargar demo
+                      </button>
+                    )}
 
-                    <button
-                      onClick={() => synchronizeAWS(account)}
-                      className="rounded-lg border border-blue-500/30 px-3 py-1 text-sm text-blue-400 hover:bg-blue-500/10"
-                    >
-                      Sincronizar AWS
-                    </button>
+                    {account.status !== "demo" && (
+                      <button
+                        onClick={() => synchronizeAWS(account)}
+                        className="rounded-lg border border-blue-500/30 px-3 py-1 text-sm text-blue-400 hover:bg-blue-500/10"
+                      >
+                        Sincronizar AWS
+                      </button>
+                    )}
 
                     <button
                       onClick={() => analyzeAccount(account)}

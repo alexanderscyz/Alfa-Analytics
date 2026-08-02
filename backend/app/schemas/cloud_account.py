@@ -40,4 +40,8 @@ class CloudAccountResponse(BaseModel):
     external_id: str | None
     role_arn: str
     status: str
+    last_sync_at: datetime | None
+    last_sync_region: str | None
+    last_sync_status: str | None
+    resource_count: int
     created_at: datetime
