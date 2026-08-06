@@ -45,6 +45,9 @@ export default function Home() {
   const [selectedAccountId, setSelectedAccountId] =
     useState<string | null>(null);
 
+  const [syncRegion, setSyncRegion] =
+    useState("us-east-1"); 
+
   const selectedAccount =
     accounts.find((account) => account.id === selectedAccountId) ??
     null;
@@ -209,7 +212,7 @@ export default function Home() {
 
   async function synchronizeAWS(account: CloudAccount) {
     const confirmed = window.confirm(
-      `¿Deseas sincronizar recursos reales de "${account.name}"?`,
+      `¿Deseas sincronizar "${account.name}" en ${syncRegion}?`,
     );
 
     if (!confirmed) {
@@ -219,7 +222,7 @@ export default function Home() {
     setSelectedAccountId(account.id);
 
     const response = await fetch(
-      `${API_URL}/api/v1/aws/discover/${account.id}?region=us-east-1`,
+      `${API_URL}/api/v1/aws/discover/${account.id}?region=${encodeURIComponent(syncRegion)}`,
       { method: "POST" },
     );
 
@@ -251,7 +254,14 @@ export default function Home() {
     setAccounts((currentAccounts) =>
       currentAccounts.map((currentAccount) =>
         currentAccount.id === account.id
-          ? { ...currentAccount, status: "connected" }
+          ? {
+              ...currentAccount,
+              status: "connected",
+              last_sync_at: new Date().toISOString(),
+              last_sync_region: syncRegion,
+              last_sync_status: "success",
+              resource_count: discoveredResources.length,
+            }
           : currentAccount,
       ),
     );
@@ -374,12 +384,46 @@ export default function Home() {
               </p>
             </div>
 
-            <button
-              onClick={() => setShowForm(true)}
-              className="rounded-lg bg-cyan-500 px-4 py-2 font-medium text-slate-950"
-            >
-              Agregar cuenta
-            </button>
+                        <div className="flex flex-wrap items-center gap-3">
+              <label
+                htmlFor="aws-region"
+                className="text-sm text-slate-400"
+              >
+                Región
+              </label>
+
+              <select
+                id="aws-region"
+                value={syncRegion}
+                onChange={(event) =>
+                  setSyncRegion(event.target.value)
+                }
+                className="rounded-lg border border-slate-700 bg-slate-950 px-3 py-2 text-sm outline-none focus:border-cyan-500"
+              >
+                <option value="us-east-1">
+                  US East (N. Virginia)
+                </option>
+                <option value="us-east-2">
+                  US East (Ohio)
+                </option>
+                <option value="us-west-2">
+                  US West (Oregon)
+                </option>
+                <option value="sa-east-1">
+                  South America (São Paulo)
+                </option>
+                <option value="eu-west-1">
+                  Europe (Ireland)
+                </option>
+              </select>
+
+              <button
+                onClick={() => setShowForm(true)}
+                className="rounded-lg bg-cyan-500 px-4 py-2 font-medium text-slate-950"
+              >
+                Agregar cuenta
+              </button>
+            </div>
           </div>
 
           {loading ? (
