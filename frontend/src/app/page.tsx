@@ -48,6 +48,9 @@ export default function Home() {
   const [syncRegion, setSyncRegion] =
     useState("us-east-1"); 
 
+  const [syncingAccountId, setSyncingAccountId] =
+  useState<string | null>(null);
+
   const selectedAccount =
     accounts.find((account) => account.id === selectedAccountId) ??
     null;
@@ -211,16 +214,18 @@ export default function Home() {
   }
 
   async function synchronizeAWS(account: CloudAccount) {
-    const confirmed = window.confirm(
-      `¿Deseas sincronizar "${account.name}" en ${syncRegion}?`,
-    );
+  const confirmed = window.confirm(
+    `¿Deseas sincronizar "${account.name}" en ${syncRegion}?`,
+  );
 
-    if (!confirmed) {
-      return;
-    }
+  if (!confirmed) {
+    return;
+  }
 
-    setSelectedAccountId(account.id);
+  setSelectedAccountId(account.id);
+  setSyncingAccountId(account.id);
 
+  try {
     const response = await fetch(
       `${API_URL}/api/v1/aws/discover/${account.id}?region=${encodeURIComponent(syncRegion)}`,
       { method: "POST" },
@@ -229,10 +234,9 @@ export default function Home() {
     if (!response.ok) {
       const result = await response.json();
 
-      window.alert(
+      throw new Error(
         result.detail ?? "No se pudo sincronizar la cuenta AWS",
       );
-      return;
     }
 
     const discoveredResources: CloudResource[] =
@@ -240,14 +244,16 @@ export default function Home() {
 
     setResources((currentResources) => [
       ...currentResources.filter(
-        (resource) => resource.cloud_account_id !== account.id,
+        (resource) =>
+          resource.cloud_account_id !== account.id,
       ),
       ...discoveredResources,
     ]);
 
     setFindings((currentFindings) =>
       currentFindings.filter(
-        (finding) => finding.cloud_account_id !== account.id,
+        (finding) =>
+          finding.cloud_account_id !== account.id,
       ),
     );
 
@@ -265,7 +271,22 @@ export default function Home() {
           : currentAccount,
       ),
     );
+
+    window.alert(
+      `Sincronización completadaada.\n\nRegión: ${syncRegion}\nRecursos encontrados: ${discoveredResources.length}`,
+    );
+  } catch (error) {
+    const message =
+      error instanceof Error
+        ? error.message
+        : "No se pudo sincronizar la cuenta AWS";
+
+    window.alert(message);
+    void loadAccounts();
+  } finally {
+    setSyncingAccountId(null);
   }
+}
 
   async function analyzeAccount(account: CloudAccount) {
     setSelectedAccountId(account.id);
@@ -516,11 +537,14 @@ export default function Home() {
 
                     {account.status !== "demo" && (
                       <button
-                        onClick={() => synchronizeAWS(account)}
-                        className="rounded-lg border border-blue-500/30 px-3 py-1 text-sm text-blue-400 hover:bg-blue-500/10"
-                      >
-                        Sincronizar AWS
-                      </button>
+  onClick={() => synchronizeAWS(account)}
+  disabled={syncingAccountId !== null}
+  className="rounded-lg border border-blue-500/30 px-3 py-1 text-sm text-blue-400 hover:bg-blue-500/10 disabled:cursor-not-allowed disabled:opacity-50"
+>
+  {syncingAccountId === account.id
+    ? "Sincronizando..."
+    : "Sincronizar AWS"}
+</button>
                     )}
 
                     <button
