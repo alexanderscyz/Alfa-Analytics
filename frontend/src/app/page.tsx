@@ -9,6 +9,10 @@ import CloudResourceTable from "@/components/CloudResourceTable";
 import FindingsPanel from "@/components/FindingsPanel";
 import SyncHistoryPanel from "@/components/SyncHistoryPanel";
 import type { CloudAccount } from "@/types/cloud";
+import ConfirmDialog from "@/components/ConfirmDialog";
+import NotificationToast, {
+  type NotificationData,
+} from "@/components/NotificationToast";
 
 type CloudResource = {
   id: string;
@@ -33,6 +37,11 @@ type Finding = {
   status: string;
 };
 
+type ConfirmationState = {
+  action: "sync" | "delete";
+  account: CloudAccount;
+} | null;
+
 const API_URL =
   process.env.NEXT_PUBLIC_API_URL ?? "http://localhost:8000";
 
@@ -47,11 +56,19 @@ export default function Home() {
   const [selectedAccountId, setSelectedAccountId] =
     useState<string | null>(null);
 
-  const [syncRegion, setSyncRegion] =
-    useState("us-east-1"); 
+  const [syncRegion, setSyncRegion] = useState("us-east-1");
 
   const [syncingAccountId, setSyncingAccountId] =
-  useState<string | null>(null);
+    useState<string | null>(null);
+
+  const [deletingAccountId, setDeletingAccountId] =
+    useState<string | null>(null);
+
+  const [notification, setNotification] =
+    useState<NotificationData | null>(null);
+
+  const [confirmation, setConfirmation] =
+    useState<ConfirmationState>(null);
 
   const selectedAccount =
     accounts.find((account) => account.id === selectedAccountId) ??
@@ -130,51 +147,61 @@ export default function Home() {
   }, []);
 
   async function deleteAccount(account: CloudAccount) {
-    const confirmed = window.confirm(
-      `¿Deseas eliminar la cuenta "${account.name}"?`,
-    );
+    setDeletingAccountId(account.id);
 
-    if (!confirmed) {
-      return;
-    }
-
-    const response = await fetch(
-      `${API_URL}/api/v1/cloud-accounts/${account.id}`,
-      { method: "DELETE" },
-    );
-
-    if (!response.ok) {
-      window.alert("No se pudo eliminar la cuenta");
-      return;
-    }
-
-    setAccounts((currentAccounts) =>
-      currentAccounts.filter(
-        (currentAccount) => currentAccount.id !== account.id,
-      ),
-    );
-
-    setResources((currentResources) =>
-      currentResources.filter(
-        (resource) => resource.cloud_account_id !== account.id,
-      ),
-    );
-
-    setFindings((currentFindings) =>
-      currentFindings.filter(
-        (finding) => finding.cloud_account_id !== account.id,
-      ),
-    );
-
-    if (selectedAccountId === account.id) {
-      const nextAccount = accounts.find(
-        (currentAccount) => currentAccount.id !== account.id,
+    try {
+      const response = await fetch(
+        `${API_URL}/api/v1/cloud-accounts/${account.id}`,
+        { method: "DELETE" },
       );
-      setSelectedAccountId(nextAccount?.id ?? null);
-    }
 
-    if (setupAccount?.id === account.id) {
-      setSetupAccount(null);
+      if (!response.ok) {
+        throw new Error("No se pudo eliminar la cuenta");
+      }
+
+      setAccounts((currentAccounts) =>
+        currentAccounts.filter(
+          (currentAccount) => currentAccount.id !== account.id,
+        ),
+      );
+      setResources((currentResources) =>
+        currentResources.filter(
+          (resource) => resource.cloud_account_id !== account.id,
+        ),
+      );
+      setFindings((currentFindings) =>
+        currentFindings.filter(
+          (finding) => finding.cloud_account_id !== account.id,
+        ),
+      );
+
+      if (selectedAccountId === account.id) {
+        const nextAccount = accounts.find(
+          (currentAccount) => currentAccount.id !== account.id,
+        );
+        setSelectedAccountId(nextAccount?.id ?? null);
+      }
+
+      if (setupAccount?.id === account.id) {
+        setSetupAccount(null);
+      }
+
+      setNotification({
+        type: "success",
+        title: "Cuenta eliminada",
+        message: `"${account.name}" fue eliminada correctamente.`,
+      });
+    } catch (error) {
+      setNotification({
+        type: "error",
+        title: "No se pudo eliminar",
+        message:
+          error instanceof Error
+            ? error.message
+            : "Ocurrió un error inesperado",
+      });
+    } finally {
+      setDeletingAccountId(null);
     }
   }
 
@@ -187,7 +214,11 @@ export default function Home() {
     );
 
     if (!response.ok) {
-      window.alert("No se pudo generar el inventario demo");
+      setNotification({
+        type: "error",
+        title: "Error al cargar la demostración",
+        message: "No se pudo generar el inventario demo.",
+      });
       return;
     }
 
@@ -199,13 +230,11 @@ export default function Home() {
       ),
       ...demoResources,
     ]);
-
     setFindings((currentFindings) =>
       currentFindings.filter(
         (finding) => finding.cloud_account_id !== account.id,
       ),
     );
-
     setAccounts((currentAccounts) =>
       currentAccounts.map((currentAccount) =>
         currentAccount.id === account.id
@@ -213,82 +242,79 @@ export default function Home() {
           : currentAccount,
       ),
     );
+    setNotification({
+      type: "success",
+      title: "Inventario demo cargado",
+      message: `Se cargaron ${demoResources.length} recursos de demostración.`,
+    });
   }
 
   async function synchronizeAWS(account: CloudAccount) {
-  const confirmed = window.confirm(
-    `¿Deseas sincronizar "${account.name}" en ${syncRegion}?`,
-  );
+    setSelectedAccountId(account.id);
+    setSyncingAccountId(account.id);
 
-  if (!confirmed) {
-    return;
-  }
-
-  setSelectedAccountId(account.id);
-  setSyncingAccountId(account.id);
-
-  try {
-    const response = await fetch(
-      `${API_URL}/api/v1/aws/discover/${account.id}?region=${encodeURIComponent(syncRegion)}`,
-      { method: "POST" },
-    );
-
-    if (!response.ok) {
-      const result = await response.json();
-
-      throw new Error(
-        result.detail ?? "No se pudo sincronizar la cuenta AWS",
+    try {
+      const response = await fetch(
+        `${API_URL}/api/v1/aws/discover/${account.id}?region=${encodeURIComponent(syncRegion)}`,
+        { method: "POST" },
       );
+
+      if (!response.ok) {
+        const result = await response.json();
+        throw new Error(
+          result.detail ?? "No se pudo sincronizar la cuenta AWS",
+        );
+      }
+
+      const discoveredResources: CloudResource[] =
+        await response.json();
+
+      setResources((currentResources) => [
+        ...currentResources.filter(
+          (resource) => resource.cloud_account_id !== account.id,
+        ),
+        ...discoveredResources,
+      ]);
+      setFindings((currentFindings) =>
+        currentFindings.filter(
+          (finding) => finding.cloud_account_id !== account.id,
+        ),
+      );
+      setAccounts((currentAccounts) =>
+        currentAccounts.map((currentAccount) =>
+          currentAccount.id === account.id
+            ? {
+                ...currentAccount,
+                status: "connected",
+                last_sync_at: new Date().toISOString(),
+                last_sync_region: syncRegion,
+                last_sync_status: "success",
+                resource_count: discoveredResources.length,
+              }
+            : currentAccount,
+        ),
+      );
+      setNotification({
+        type: "success",
+        title: "Sincronización completada",
+        message: `Región: ${syncRegion}\nRecursos encontrados: ${discoveredResources.length}`,
+      });
+    } catch (error) {
+      const message =
+        error instanceof Error
+          ? error.message
+          : "No se pudo sincronizar la cuenta AWS";
+
+      setNotification({
+        type: "error",
+        title: "No se pudo sincronizar",
+        message,
+      });
+      void loadAccounts();
+    } finally {
+      setSyncingAccountId(null);
     }
-
-    const discoveredResources: CloudResource[] =
-      await response.json();
-
-    setResources((currentResources) => [
-      ...currentResources.filter(
-        (resource) =>
-          resource.cloud_account_id !== account.id,
-      ),
-      ...discoveredResources,
-    ]);
-
-    setFindings((currentFindings) =>
-      currentFindings.filter(
-        (finding) =>
-          finding.cloud_account_id !== account.id,
-      ),
-    );
-
-    setAccounts((currentAccounts) =>
-      currentAccounts.map((currentAccount) =>
-        currentAccount.id === account.id
-          ? {
-              ...currentAccount,
-              status: "connected",
-              last_sync_at: new Date().toISOString(),
-              last_sync_region: syncRegion,
-              last_sync_status: "success",
-              resource_count: discoveredResources.length,
-            }
-          : currentAccount,
-      ),
-    );
-
-    window.alert(
-      `Sincronización completada.\n\nRegión: ${syncRegion}\nRecursos encontrados: ${discoveredResources.length}`,
-    );
-  } catch (error) {
-    const message =
-      error instanceof Error
-        ? error.message
-        : "No se pudo sincronizar la cuenta AWS";
-
-    window.alert(message);
-    void loadAccounts();
-  } finally {
-    setSyncingAccountId(null);
   }
-}
 
   async function analyzeAccount(account: CloudAccount) {
     setSelectedAccountId(account.id);
@@ -300,10 +326,11 @@ export default function Home() {
 
     if (!response.ok) {
       const result = await response.json();
-
-      window.alert(
-        result.detail ?? "No se pudo analizar la cuenta",
-      );
+      setNotification({
+        type: "error",
+        title: "No se pudo analizar",
+        message: result.detail ?? "No se pudo analizar la cuenta",
+      });
       return;
     }
 
@@ -315,10 +342,67 @@ export default function Home() {
       ),
       ...accountFindings,
     ]);
+    setNotification({
+      type: "success",
+      title: "Análisis completado",
+      message: `Se detectaron ${accountFindings.length} hallazgos en "${account.name}".`,
+    });
+  }
+
+  function confirmPendingAction() {
+    if (!confirmation) {
+      return;
+    }
+
+    const pendingConfirmation = confirmation;
+    setConfirmation(null);
+
+    if (pendingConfirmation.action === "sync") {
+      void synchronizeAWS(pendingConfirmation.account);
+      return;
+    }
+
+    void deleteAccount(pendingConfirmation.account);
   }
 
   return (
     <AppShell>
+      <NotificationToast
+        notification={notification}
+        onClose={() => setNotification(null)}
+      />
+
+      <ConfirmDialog
+        open={confirmation !== null}
+        title={
+          confirmation?.action === "delete"
+            ? "Eliminar cuenta AWS"
+            : "Sincronizar inventario AWS"
+        }
+        message={
+          confirmation?.action === "delete"
+            ? `Se eliminarán la cuenta "${confirmation.account.name}" y todos sus datos asociados.`
+            : `Se consultará "${confirmation?.account.name ?? ""}" en la región ${syncRegion}.`
+        }
+        confirmLabel={
+          confirmation?.action === "delete"
+            ? "Eliminar cuenta"
+            : "Sincronizar"
+        }
+        variant={
+          confirmation?.action === "delete"
+            ? "danger"
+            : "primary"
+        }
+        busy={
+          confirmation?.action === "delete"
+            ? deletingAccountId !== null
+            : syncingAccountId !== null
+        }
+        onConfirm={confirmPendingAction}
+        onCancel={() => setConfirmation(null)}
+      />
+
       <section className="mx-auto max-w-7xl px-8 py-10">
         <div className="mb-8">
           <h2 className="text-3xl font-semibold">
@@ -521,14 +605,19 @@ export default function Home() {
 
                     {account.status !== "demo" && (
                       <button
-  onClick={() => synchronizeAWS(account)}
-  disabled={syncingAccountId !== null}
-  className="rounded-lg border border-blue-500/30 px-3 py-1 text-sm text-blue-400 hover:bg-blue-500/10 disabled:cursor-not-allowed disabled:opacity-50"
->
-  {syncingAccountId === account.id
-    ? "Sincronizando..."
-    : "Sincronizar AWS"}
-</button>
+                        onClick={() =>
+                          setConfirmation({
+                            action: "sync",
+                            account,
+                          })
+                        }
+                        disabled={syncingAccountId !== null}
+                        className="rounded-lg border border-blue-500/30 px-3 py-1 text-sm text-blue-400 hover:bg-blue-500/10 disabled:cursor-not-allowed disabled:opacity-50"
+                      >
+                        {syncingAccountId === account.id
+                          ? "Sincronizando..."
+                          : "Sincronizar AWS"}
+                      </button>
                     )}
 
                     <button
@@ -546,10 +635,18 @@ export default function Home() {
                     </a>
 
                     <button
-                      onClick={() => deleteAccount(account)}
-                      className="rounded-lg border border-red-500/30 px-3 py-1 text-sm text-red-400 hover:bg-red-500/10"
+                      onClick={() =>
+                        setConfirmation({
+                          action: "delete",
+                          account,
+                        })
+                      }
+                      disabled={deletingAccountId !== null}
+                      className="rounded-lg border border-red-500/30 px-3 py-1 text-sm text-red-400 hover:bg-red-500/10 disabled:cursor-not-allowed disabled:opacity-50"
                     >
-                      Eliminar
+                      {deletingAccountId === account.id
+                        ? "Eliminando..."
+                        : "Eliminar"}
                     </button>
                   </div>
                 </div>
