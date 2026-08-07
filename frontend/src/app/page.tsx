@@ -3,6 +3,7 @@
 import { useCallback, useEffect, useState } from "react";
 
 import AddCloudAccountForm from "@/components/AddCloudAccountForm";
+import AppShell from "@/components/AppShell";
 import AWSSetupPanel from "@/components/AWSSetupPanel";
 import CloudResourceTable from "@/components/CloudResourceTable";
 import FindingsPanel from "@/components/FindingsPanel";
@@ -317,25 +318,7 @@ export default function Home() {
   }
 
   return (
-    <main className="min-h-screen bg-slate-950 text-slate-100">
-      <header className="border-b border-slate-800 bg-slate-900">
-        <div className="mx-auto flex max-w-7xl items-center justify-between px-8 py-5">
-          <div>
-            <h1 className="text-2xl font-bold text-cyan-400">
-              Alfa Analytics
-            </h1>
-
-            <p className="text-sm text-slate-400">
-              Cloud intelligence platform
-            </p>
-          </div>
-
-          <span className="rounded-full bg-emerald-500/15 px-4 py-2 text-sm text-emerald-400">
-            Sistema operativo
-          </span>
-        </div>
-      </header>
-
+    <AppShell>
       <section className="mx-auto max-w-7xl px-8 py-10">
         <div className="mb-8">
           <h2 className="text-3xl font-semibold">
@@ -622,7 +605,7 @@ export default function Home() {
           />
         )}
       </section>
-    </main>
+    </AppShell>
   );
 }
 
