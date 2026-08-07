@@ -42,8 +42,24 @@ type ConfirmationState = {
   account: CloudAccount;
 } | null;
 
-const API_URL =
-  process.env.NEXT_PUBLIC_API_URL ?? "http://localhost:8000";
+type MultiRegionDiscoveryResult = {
+  status: "success" | "partial_success";
+  requested_regions: string[];
+  successful_regions: string[];
+  failed_regions: string[];
+  resource_count: number;
+  resources: CloudResource[];
+};
+
+const AWS_REGIONS = [
+  { value: "us-east-1", label: "US East (N. Virginia)" },
+  { value: "us-east-2", label: "US East (Ohio)" },
+  { value: "us-west-2", label: "US West (Oregon)" },
+  { value: "sa-east-1", label: "South America (São Paulo)" },
+  { value: "eu-west-1", label: "Europe (Ireland)" },
+] as const;
+
+const API_URL = process.env.NEXT_PUBLIC_API_URL ?? "http://localhost:8000";
 
 export default function Home() {
   const [accounts, setAccounts] = useState<CloudAccount[]>([]);
@@ -51,46 +67,51 @@ export default function Home() {
   const [findings, setFindings] = useState<Finding[]>([]);
   const [loading, setLoading] = useState(true);
   const [showForm, setShowForm] = useState(false);
-  const [setupAccount, setSetupAccount] =
-    useState<CloudAccount | null>(null);
-  const [selectedAccountId, setSelectedAccountId] =
-    useState<string | null>(null);
+  const [setupAccount, setSetupAccount] = useState<CloudAccount | null>(null);
+  const [selectedAccountId, setSelectedAccountId] = useState<string | null>(
+    null,
+  );
 
-  const [syncRegion, setSyncRegion] = useState("us-east-1");
+  const [selectedRegions, setSelectedRegions] = useState<string[]>([
+    "us-east-1",
+  ]);
 
-  const [syncingAccountId, setSyncingAccountId] =
-    useState<string | null>(null);
+  const [syncingAccountId, setSyncingAccountId] = useState<string | null>(null);
 
-  const [deletingAccountId, setDeletingAccountId] =
-    useState<string | null>(null);
+  const [deletingAccountId, setDeletingAccountId] = useState<string | null>(
+    null,
+  );
 
-  const [notification, setNotification] =
-    useState<NotificationData | null>(null);
+  const [notification, setNotification] = useState<NotificationData | null>(
+    null,
+  );
 
-  const [confirmation, setConfirmation] =
-    useState<ConfirmationState>(null);
+  const [confirmation, setConfirmation] = useState<ConfirmationState>(null);
 
   const selectedAccount =
-    accounts.find((account) => account.id === selectedAccountId) ??
-    null;
+    accounts.find((account) => account.id === selectedAccountId) ?? null;
   const selectedResources = selectedAccountId
     ? resources.filter(
-        (resource) =>
-          resource.cloud_account_id === selectedAccountId,
+        (resource) => resource.cloud_account_id === selectedAccountId,
       )
     : [];
   const selectedFindings = selectedAccountId
     ? findings.filter(
-        (finding) =>
-          finding.cloud_account_id === selectedAccountId,
+        (finding) => finding.cloud_account_id === selectedAccountId,
       )
     : [];
 
+  function toggleRegion(region: string) {
+    setSelectedRegions((currentRegions) =>
+      currentRegions.includes(region)
+        ? currentRegions.filter((currentRegion) => currentRegion !== region)
+        : [...currentRegions, region],
+    );
+  }
+
   const loadAccounts = useCallback(async () => {
     try {
-      const response = await fetch(
-        `${API_URL}/api/v1/cloud-accounts/`,
-      );
+      const response = await fetch(`${API_URL}/api/v1/cloud-accounts/`);
 
       if (!response.ok) {
         throw new Error("API request failed");
@@ -118,9 +139,7 @@ export default function Home() {
 
   useEffect(() => {
     async function loadResources() {
-      const response = await fetch(
-        `${API_URL}/api/v1/cloud-resources/`,
-      );
+      const response = await fetch(`${API_URL}/api/v1/cloud-resources/`);
 
       if (response.ok) {
         const result: CloudResource[] = await response.json();
@@ -133,9 +152,7 @@ export default function Home() {
 
   useEffect(() => {
     async function loadFindings() {
-      const response = await fetch(
-        `${API_URL}/api/v1/findings/`,
-      );
+      const response = await fetch(`${API_URL}/api/v1/findings/`);
 
       if (response.ok) {
         const result: Finding[] = await response.json();
@@ -255,8 +272,12 @@ export default function Home() {
 
     try {
       const response = await fetch(
-        `${API_URL}/api/v1/aws/discover/${account.id}?region=${encodeURIComponent(syncRegion)}`,
-        { method: "POST" },
+        `${API_URL}/api/v1/aws/discover/${account.id}/multi-region`,
+        {
+          method: "POST",
+          headers: { "Content-Type": "application/json" },
+          body: JSON.stringify({ regions: selectedRegions }),
+        },
       );
 
       if (!response.ok) {
@@ -266,8 +287,8 @@ export default function Home() {
         );
       }
 
-      const discoveredResources: CloudResource[] =
-        await response.json();
+      const result: MultiRegionDiscoveryResult = await response.json();
+      const discoveredResources = result.resources;
 
       setResources((currentResources) => [
         ...currentResources.filter(
@@ -287,17 +308,28 @@ export default function Home() {
                 ...currentAccount,
                 status: "connected",
                 last_sync_at: new Date().toISOString(),
-                last_sync_region: syncRegion,
-                last_sync_status: "success",
-                resource_count: discoveredResources.length,
+                last_sync_region: "multi-region",
+                last_sync_status: result.status,
+                resource_count: result.resource_count,
               }
             : currentAccount,
         ),
       );
       setNotification({
-        type: "success",
-        title: "Sincronización completada",
-        message: `Región: ${syncRegion}\nRecursos encontrados: ${discoveredResources.length}`,
+        type: result.status === "partial_success" ? "info" : "success",
+        title:
+          result.status === "partial_success"
+            ? "Sincronización parcialmente completada"
+            : "Sincronización completada",
+        message: [
+          `Regiones correctas: ${result.successful_regions.join(", ")}`,
+          result.failed_regions.length > 0
+            ? `Regiones fallidas: ${result.failed_regions.join(", ")}`
+            : null,
+          `Recursos encontrados: ${result.resource_count}`,
+        ]
+          .filter(Boolean)
+          .join("\n"),
       });
     } catch (error) {
       const message =
@@ -382,18 +414,12 @@ export default function Home() {
         message={
           confirmation?.action === "delete"
             ? `Se eliminarán la cuenta "${confirmation.account.name}" y todos sus datos asociados.`
-            : `Se consultará "${confirmation?.account.name ?? ""}" en la región ${syncRegion}.`
+            : `Se consultará "${confirmation?.account.name ?? ""}" en ${selectedRegions.length} región${selectedRegions.length === 1 ? "" : "es"}: ${selectedRegions.join(", ")}.`
         }
         confirmLabel={
-          confirmation?.action === "delete"
-            ? "Eliminar cuenta"
-            : "Sincronizar"
+          confirmation?.action === "delete" ? "Eliminar cuenta" : "Sincronizar"
         }
-        variant={
-          confirmation?.action === "delete"
-            ? "danger"
-            : "primary"
-        }
+        variant={confirmation?.action === "delete" ? "danger" : "primary"}
         busy={
           confirmation?.action === "delete"
             ? deletingAccountId !== null
@@ -405,9 +431,7 @@ export default function Home() {
 
       <section className="mx-auto max-w-7xl px-8 py-10">
         <div className="mb-8">
-          <h2 className="text-3xl font-semibold">
-            Resumen ejecutivo
-          </h2>
+          <h2 className="text-3xl font-semibold">Resumen ejecutivo</h2>
 
           <p className="mt-2 text-slate-400">
             Estado general de la infraestructura cloud conectada.
@@ -462,50 +486,16 @@ export default function Home() {
         </div>
 
         <div className="mt-10 rounded-2xl border border-slate-800 bg-slate-900 p-6">
-          <div className="mb-6 flex items-center justify-between">
+          <div className="mb-6 flex flex-col gap-5 xl:flex-row xl:items-start xl:justify-between">
             <div>
-              <h3 className="text-xl font-semibold">
-                Cuentas AWS
-              </h3>
+              <h3 className="text-xl font-semibold">Cuentas AWS</h3>
 
               <p className="mt-1 text-sm text-slate-400">
                 Ambientes registrados en Alfa Analytics
               </p>
             </div>
 
-                        <div className="flex flex-wrap items-center gap-3">
-              <label
-                htmlFor="aws-region"
-                className="text-sm text-slate-400"
-              >
-                Región
-              </label>
-
-              <select
-                id="aws-region"
-                value={syncRegion}
-                onChange={(event) =>
-                  setSyncRegion(event.target.value)
-                }
-                className="rounded-lg border border-slate-700 bg-slate-950 px-3 py-2 text-sm outline-none focus:border-cyan-500"
-              >
-                <option value="us-east-1">
-                  US East (N. Virginia)
-                </option>
-                <option value="us-east-2">
-                  US East (Ohio)
-                </option>
-                <option value="us-west-2">
-                  US West (Oregon)
-                </option>
-                <option value="sa-east-1">
-                  South America (São Paulo)
-                </option>
-                <option value="eu-west-1">
-                  Europe (Ireland)
-                </option>
-              </select>
-
+            <div className="flex flex-col items-start gap-3 xl:items-end">
               <button
                 onClick={() => setShowForm(true)}
                 className="rounded-lg bg-cyan-500 px-4 py-2 font-medium text-slate-950"
@@ -515,10 +505,58 @@ export default function Home() {
             </div>
           </div>
 
+          <div className="mb-6 rounded-xl border border-slate-800 bg-slate-950/50 p-4">
+            <div className="flex flex-wrap items-center justify-between gap-3">
+              <div>
+                <p className="text-sm font-medium text-slate-200">
+                  Regiones para sincronizar
+                </p>
+                <p className="mt-1 text-xs text-slate-500">
+                  Selecciona una o varias regiones AWS.
+                </p>
+              </div>
+
+              <span className="rounded-full bg-blue-500/10 px-3 py-1 text-xs text-blue-300">
+                {selectedRegions.length} seleccionada
+                {selectedRegions.length === 1 ? "" : "s"}
+              </span>
+            </div>
+
+            <div className="mt-4 flex flex-wrap gap-2">
+              {AWS_REGIONS.map((region) => {
+                const selected = selectedRegions.includes(region.value);
+
+                return (
+                  <button
+                    key={region.value}
+                    type="button"
+                    onClick={() => toggleRegion(region.value)}
+                    className={`rounded-lg border px-3 py-2 text-sm transition ${
+                      selected
+                        ? "border-blue-400 bg-blue-500/15 text-blue-200"
+                        : "border-slate-700 text-slate-400 hover:border-slate-500 hover:text-slate-200"
+                    }`}
+                  >
+                    <span
+                      className={`mr-2 inline-block h-2 w-2 rounded-full ${
+                        selected ? "bg-blue-400" : "bg-slate-600"
+                      }`}
+                    />
+                    {region.label}
+                  </button>
+                );
+              })}
+            </div>
+
+            {selectedRegions.length === 0 && (
+              <p className="mt-3 text-sm text-amber-400">
+                Selecciona al menos una región para sincronizar.
+              </p>
+            )}
+          </div>
+
           {loading ? (
-            <p className="text-slate-400">
-              Cargando cuentas...
-            </p>
+            <p className="text-slate-400">Cargando cuentas...</p>
           ) : accounts.length === 0 ? (
             <p className="text-slate-400">
               Todavía no existen cuentas registradas.
@@ -529,9 +567,7 @@ export default function Home() {
                 <div
                   key={account.id}
                   className={`flex flex-col gap-4 border-b border-slate-800 p-5 last:border-b-0 lg:flex-row lg:items-center lg:justify-between ${
-                    selectedAccountId === account.id
-                      ? "bg-cyan-500/5"
-                      : ""
+                    selectedAccountId === account.id ? "bg-cyan-500/5" : ""
                   }`}
                 >
                   <div>
@@ -545,17 +581,17 @@ export default function Home() {
                       <div className="mt-2 space-y-1 text-xs text-slate-500">
                         <p>
                           Última sincronización:{" "}
-                          {new Date(
-                            account.last_sync_at,
-                          ).toLocaleString("es-PE", {
-                            dateStyle: "short",
-                            timeStyle: "short",
-                          })}
+                          {new Date(account.last_sync_at).toLocaleString(
+                            "es-PE",
+                            {
+                              dateStyle: "short",
+                              timeStyle: "short",
+                            },
+                          )}
                         </p>
 
                         <p>
-                          Región:{" "}
-                          {account.last_sync_region ?? "No disponible"}
+                          Región: {account.last_sync_region ?? "No disponible"}
                           {" · "}
                           {account.resource_count} recursos
                           {" · "}
@@ -594,9 +630,7 @@ export default function Home() {
 
                     {account.status === "demo" && (
                       <button
-                        onClick={() =>
-                          generateDemoInventory(account)
-                        }
+                        onClick={() => generateDemoInventory(account)}
                         className="rounded-lg border border-cyan-500/30 px-3 py-1 text-sm text-cyan-400 hover:bg-cyan-500/10"
                       >
                         Cargar demo
@@ -611,7 +645,10 @@ export default function Home() {
                             account,
                           })
                         }
-                        disabled={syncingAccountId !== null}
+                        disabled={
+                          syncingAccountId !== null ||
+                          selectedRegions.length === 0
+                        }
                         className="rounded-lg border border-blue-500/30 px-3 py-1 text-sm text-blue-400 hover:bg-blue-500/10 disabled:cursor-not-allowed disabled:opacity-50"
                       >
                         {syncingAccountId === account.id
@@ -658,20 +695,18 @@ export default function Home() {
         {selectedAccount ? (
           <>
             <div className="mt-8 rounded-xl border border-cyan-500/20 bg-cyan-500/5 px-5 py-4">
-              <p className="text-sm text-slate-400">
-                Vista actual
-              </p>
+              <p className="text-sm text-slate-400">Vista actual</p>
               <p className="mt-1 font-semibold text-cyan-300">
                 {selectedAccount.name}
               </p>
             </div>
 
             <div className="mt-8">
-  <SyncHistoryPanel
-    accountId={selectedAccount.id}
-    refreshKey={selectedAccount.last_sync_at}
-  />
-</div>
+              <SyncHistoryPanel
+                accountId={selectedAccount.id}
+                refreshKey={selectedAccount.last_sync_at}
+              />
+            </div>
 
             {selectedResources.length > 0 ? (
               <CloudResourceTable resources={selectedResources} />
@@ -706,13 +741,7 @@ export default function Home() {
   );
 }
 
-function EmptyState({
-  title,
-  message,
-}: {
-  title: string;
-  message: string;
-}) {
+function EmptyState({ title, message }: { title: string; message: string }) {
   return (
     <section className="mt-8 rounded-2xl border border-slate-800 bg-slate-900 p-6">
       <h3 className="text-xl font-semibold">{title}</h3>
