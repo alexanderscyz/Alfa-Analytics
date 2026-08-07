@@ -6,6 +6,7 @@ import AddCloudAccountForm from "@/components/AddCloudAccountForm";
 import AWSSetupPanel from "@/components/AWSSetupPanel";
 import CloudResourceTable from "@/components/CloudResourceTable";
 import FindingsPanel from "@/components/FindingsPanel";
+import SyncHistoryPanel from "@/components/SyncHistoryPanel";
 import type { CloudAccount } from "@/types/cloud";
 
 type CloudResource = {
@@ -273,7 +274,7 @@ export default function Home() {
     );
 
     window.alert(
-      `Sincronización completadaada.\n\nRegión: ${syncRegion}\nRecursos encontrados: ${discoveredResources.length}`,
+      `Sincronización completada.\n\nRegión: ${syncRegion}\nRecursos encontrados: ${discoveredResources.length}`,
     );
   } catch (error) {
     const message =
@@ -584,6 +585,13 @@ export default function Home() {
                 {selectedAccount.name}
               </p>
             </div>
+
+            <div className="mt-8">
+  <SyncHistoryPanel
+    accountId={selectedAccount.id}
+    refreshKey={selectedAccount.last_sync_at}
+  />
+</div>
 
             {selectedResources.length > 0 ? (
               <CloudResourceTable resources={selectedResources} />

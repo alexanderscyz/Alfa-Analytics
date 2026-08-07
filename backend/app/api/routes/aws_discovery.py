@@ -1,5 +1,6 @@
 import uuid
 from datetime import datetime, timezone
+from time import perf_counter
 from typing import Annotated
 
 from botocore.exceptions import BotoCoreError, ClientError
@@ -17,13 +18,13 @@ from app.database import get_database_session
 from app.models.cloud_account import CloudAccount
 from app.models.cloud_resource import CloudResource
 from app.models.finding import Finding
+from app.models.sync_run import SyncRun
 from app.providers.aws_inventory import AWSInventoryCollector
 from app.providers.aws_provider import (
     AWSConnectionError,
     AWSProvider,
 )
 from app.schemas.cloud_resource import CloudResourceResponse
-
 
 router = APIRouter(prefix="/aws", tags=["AWS Discovery"])
 
@@ -55,8 +56,42 @@ def discover_aws_resources(
             detail="Cloud account not found",
         )
 
-    account.last_sync_at = datetime.now(timezone.utc)
+    started_at = datetime.now(timezone.utc)
+    started_timer = perf_counter()
+
+    sync_run = SyncRun(
+        cloud_account_id=account_id,
+        region=region,
+        status="running",
+        resource_count=0,
+        started_at=started_at,
+    )
+
+    database.add(sync_run)
+
+    account.last_sync_at = started_at
     account.last_sync_region = region
+
+    database.commit()
+    database.refresh(sync_run)
+
+    def register_failure(
+        account_status: str,
+        error_message: str,
+    ) -> None:
+        completed_at = datetime.now(timezone.utc)
+
+        sync_run.status = "failed"
+        sync_run.completed_at = completed_at
+        sync_run.duration_ms = int(
+            (perf_counter() - started_timer) * 1000,
+        )
+        sync_run.error_message = error_message
+
+        account.status = account_status
+        account.last_sync_status = "failed"
+
+        database.commit()
 
     try:
         provider = AWSProvider()
@@ -70,16 +105,19 @@ def discover_aws_resources(
         ).get_caller_identity()
 
         if identity["Account"] != account.aws_account_id:
-            account.status = "connection_failed"
-            account.last_sync_status = "failed"
-            database.commit()
+            error_message = (
+                "The assumed role belongs to a different "
+                "AWS account"
+            )
+
+            register_failure(
+                account_status="connection_failed",
+                error_message=error_message,
+            )
 
             raise HTTPException(
                 status_code=status.HTTP_409_CONFLICT,
-                detail=(
-                    "The assumed role belongs to a different "
-                    "AWS account"
-                ),
+                detail=error_message,
             )
 
         collector = AWSInventoryCollector(
@@ -89,27 +127,33 @@ def discover_aws_resources(
         discovered_resources = collector.collect()
 
     except AWSConnectionError as error:
-        account.status = "connection_failed"
-        account.last_sync_status = "failed"
-        database.commit()
+        error_message = (
+            "Unable to assume the configured AWS IAM role"
+        )
+
+        register_failure(
+            account_status="connection_failed",
+            error_message=error_message,
+        )
 
         raise HTTPException(
             status_code=status.HTTP_502_BAD_GATEWAY,
-            detail=(
-                "Unable to assume the configured AWS IAM role"
-            ),
+            detail=error_message,
         ) from error
 
     except (ClientError, BotoCoreError) as error:
-        account.status = "discovery_failed"
-        account.last_sync_status = "failed"
-        database.commit()
+        error_message = (
+            "AWS rejected one or more inventory operations"
+        )
+
+        register_failure(
+            account_status="discovery_failed",
+            error_message=error_message,
+        )
 
         raise HTTPException(
             status_code=status.HTTP_502_BAD_GATEWAY,
-            detail=(
-                "AWS rejected one or more inventory operations"
-            ),
+            detail=error_message,
         ) from error
 
     database.execute(
@@ -138,6 +182,16 @@ def discover_aws_resources(
     ]
 
     database.add_all(resources)
+
+    completed_at = datetime.now(timezone.utc)
+
+    sync_run.status = "success"
+    sync_run.resource_count = len(resources)
+    sync_run.duration_ms = int(
+        (perf_counter() - started_timer) * 1000,
+    )
+    sync_run.error_message = None
+    sync_run.completed_at = completed_at
 
     account.status = "connected"
     account.last_sync_status = "success"
