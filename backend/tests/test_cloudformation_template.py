@@ -50,7 +50,21 @@ def test_cloudformation_template_grants_only_inventory_actions() -> None:
     assert actions == INVENTORY_READ_ACTIONS
     assert all(
         action.startswith(
-            ("ec2:", "rds:", "s3:", "eks:", "lambda:", "sts:")
+            (
+                "ec2:",
+                "elasticloadbalancing:",
+                "rds:",
+                "s3:",
+                "eks:",
+                "lambda:",
+                "sts:",
+            )
         )
         for action in actions
     )
+
+    assert "ec2:DescribeNatGateways" in actions
+    assert (
+        "elasticloadbalancing:DescribeLoadBalancers" in actions
+    )
+    assert "elasticloadbalancing:DescribeTags" in actions

@@ -167,6 +167,9 @@ class AWSInventoryCollector:
             if bucket_region == "EU":
                 bucket_region = "eu-west-1"
 
+            if bucket_region != self.region:
+                continue
+
             resources.append(
                 DiscoveredResource(
                     service="S3",
@@ -259,6 +262,145 @@ class AWSInventoryCollector:
 
         return resources
 
+    def collect_load_balancers(self) -> list[DiscoveredResource]:
+        client = self.session.client(
+            "elbv2",
+            region_name=self.region,
+        )
+        paginator = client.get_paginator(
+            "describe_load_balancers",
+        )
+        resources: list[DiscoveredResource] = []
+
+        for page in paginator.paginate():
+            load_balancers = page.get("LoadBalancers", [])
+
+            if not load_balancers:
+                continue
+
+            load_balancer_arns = [
+                load_balancer["LoadBalancerArn"]
+                for load_balancer in load_balancers
+            ]
+            tag_descriptions: list[dict] = []
+
+            for index in range(0, len(load_balancer_arns), 20):
+                tag_descriptions.extend(
+                    client.describe_tags(
+                        ResourceArns=load_balancer_arns[
+                            index : index + 20
+                        ],
+                    ).get("TagDescriptions", []),
+                )
+            tags_by_arn = {
+                description["ResourceArn"]: description.get(
+                    "Tags",
+                    [],
+                )
+                for description in tag_descriptions
+            }
+
+            for load_balancer in load_balancers:
+                load_balancer_arn = load_balancer[
+                    "LoadBalancerArn"
+                ]
+                load_balancer_type = load_balancer.get(
+                    "Type",
+                    "application",
+                )
+                service = {
+                    "application": "ALB",
+                    "network": "NLB",
+                    "gateway": "GWLB",
+                }.get(load_balancer_type, "ELB")
+
+                resources.append(
+                    DiscoveredResource(
+                        service=service,
+                        resource_id=load_balancer_arn,
+                        name=load_balancer["LoadBalancerName"],
+                        region=self.region,
+                        status=load_balancer.get(
+                            "State",
+                            {},
+                        ).get("Code", "unknown"),
+                        metadata={
+                            "type": load_balancer_type,
+                            "scheme": load_balancer.get("Scheme"),
+                            "dns_name": load_balancer.get(
+                                "DNSName",
+                            ),
+                            "vpc_id": load_balancer.get("VpcId"),
+                            "ip_address_type": load_balancer.get(
+                                "IpAddressType",
+                            ),
+                            "security_groups": load_balancer.get(
+                                "SecurityGroups",
+                                [],
+                            ),
+                            "availability_zones": [
+                                zone.get("ZoneName")
+                                for zone in load_balancer.get(
+                                    "AvailabilityZones",
+                                    [],
+                                )
+                            ],
+                            "tags": tags_by_arn.get(
+                                load_balancer_arn,
+                                [],
+                            ),
+                        },
+                    ),
+                )
+
+        return resources
+
+    def collect_nat_gateways(self) -> list[DiscoveredResource]:
+        client = self.session.client(
+            "ec2",
+            region_name=self.region,
+        )
+        paginator = client.get_paginator(
+            "describe_nat_gateways",
+        )
+        resources: list[DiscoveredResource] = []
+
+        for page in paginator.paginate():
+            for gateway in page.get("NatGateways", []):
+                gateway_id = gateway["NatGatewayId"]
+
+                resources.append(
+                    DiscoveredResource(
+                        service="NAT Gateway",
+                        resource_id=gateway_id,
+                        name=self.get_name(
+                            gateway.get("Tags"),
+                            gateway_id,
+                        ),
+                        region=self.region,
+                        status=gateway.get("State", "unknown"),
+                        metadata={
+                            "vpc_id": gateway.get("VpcId"),
+                            "subnet_id": gateway.get("SubnetId"),
+                            "connectivity_type": gateway.get(
+                                "ConnectivityType",
+                            ),
+                            "addresses": gateway.get(
+                                "NatGatewayAddresses",
+                                [],
+                            ),
+                            "created_at": (
+                                gateway["CreateTime"].isoformat()
+                                if gateway.get("CreateTime")
+                                else None
+                            ),
+                            "tags": gateway.get("Tags", []),
+                        },
+                    ),
+                )
+
+        return resources
+
     def collect(self) -> list[DiscoveredResource]:
         return [
             *self.collect_ec2_instances(),
@@ -267,4 +409,6 @@ class AWSInventoryCollector:
             *self.collect_s3_buckets(),
             *self.collect_eks_clusters(),
             *self.collect_lambda_functions(),
+            *self.collect_load_balancers(),
+            *self.collect_nat_gateways(),
         ]

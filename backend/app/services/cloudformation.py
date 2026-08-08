@@ -3,7 +3,10 @@ from typing import Any
 
 INVENTORY_READ_ACTIONS = [
     "ec2:DescribeInstances",
+    "ec2:DescribeNatGateways",
     "ec2:DescribeVolumes",
+    "elasticloadbalancing:DescribeLoadBalancers",
+    "elasticloadbalancing:DescribeTags",
     "rds:DescribeDBInstances",
     "s3:ListAllMyBuckets",
     "s3:GetBucketLocation",
